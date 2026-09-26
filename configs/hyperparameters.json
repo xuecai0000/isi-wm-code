@@ -1,0 +1,33 @@
+{
+ "format": "irwm_interventional_hyperparameters_v1",
+ "source": "training configs and checkpoint contracts",
+ "all_tasks_share_one_setting": true,
+ "branch_magnitude": 0.8,
+ "outcome_gap_threshold": 0.05,
+ "margin": {
+  "min": 0.05,
+  "max": 0.2,
+  "formula": "m(g) = 0.05 + 0.15 * clamp(g, 0, 1)"
+ },
+ "horizon": 3,
+ "branches_per_task": "1 + 2*action_dim",
+ "sampler": {
+  "batch_size": 8,
+  "update_frequency": 1,
+  "seed_offset": 32452843,
+  "pairing_mode": "correct",
+  "pairing_seed_offset": 32452845,
+  "candidate_schedule": "identity_aware_uniform_rejection_derangement_v1"
+ },
+ "temporal_discount": {
+  "rho": 0.5,
+  "note": "rho^k weights per horizon frame (TD-MPC2 default rho)"
+ },
+ "privileged_use": "official state used only for train coordinate scale and test outcome eligibility; never sent to model",
+ "loss_coefficients": {
+  "background": 1.0,
+  "positive": 1.0,
+  "separation": 1.0,
+  "ranking": 1.0
+ }
+}

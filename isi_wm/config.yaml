@@ -1,0 +1,459 @@
+defaults:
+    - override hydra/launcher: submitit_local
+
+# environment
+task: dog-run
+obs: state
+episodic: false
+
+# Dynamic Color-multi video background (disabled by default, so the official
+# RGB environment and its RNG path are unchanged). Video files stay in the
+# existing external video_hard directory; this project stores filenames only.
+video_background_enabled: false
+video_background_root: null
+video_background_split: train
+# null selects the packaged, immutable train/validation/test/support manifests.
+video_background_manifest_dir: null
+video_background_strength: 1.0
+video_background_total_frames: 1000
+video_background_source_cache_size: 8
+
+# FlatAnchor (disabled by default; official TD-MPC2 behavior is unchanged)
+flat_anchor: false
+# `reward_graph` keeps the complete official RGB dynamics, Q ensemble, and
+# policy prior, and exposes the compact role graph only to an additive reward
+# correction. `hybrid_graph` is retained as the completed reward/Q/policy
+# correction ablation; `cutie_hybrid` combines RGB and generic whole-arm/goal
+# Cutie state. `cutie_object_only` keeps RGB inside the perception wrapper but
+# exposes only the compact Cutie state to the controller and replay buffer.
+# `object_graph`, `oc`, and `residual` retain older paths.
+flat_anchor_mode: object_graph
+flat_anchor_impl_path: <PATH>
+flat_anchor_device: cuda:0
+# Required when flat_anchor=true. Keep empty here to prevent accidental use of
+# a diagnostic/simulator-bootstrapped support pack.
+flat_anchor_support_path: null
+flat_anchor_allow_diagnostic_support: false
+flat_anchor_dino_model: dinov2_vits14_reg
+flat_anchor_dino_repo: <PATH>
+flat_anchor_dino_checkpoint: <PATH>
+flat_anchor_dino_input_size: 448
+flat_anchor_color_window: 5
+flat_anchor_color_score_weight: 0.35
+flat_anchor_goal_dino_score_weight: 0.0
+flat_anchor_goal_color_score_weight: 1.0
+flat_anchor_role_contrast_weight: 0.15
+flat_anchor_structured_candidates: 32
+flat_anchor_structured_nms_radius: 2
+flat_anchor_structure_weight: 1.0
+flat_anchor_structure_length_tolerance: 2.0
+flat_anchor_temporal_beam_size: 8
+flat_anchor_temporal_unary_scale_floor: 0.5
+flat_anchor_temporal_position_scale: 3.0
+flat_anchor_temporal_position_weight: 1.0
+flat_anchor_temporal_velocity_scale: 3.0
+flat_anchor_temporal_velocity_weight: 0.5
+flat_anchor_temporal_elbow_weight: 0.25
+flat_anchor_confidence_scale: 2.0
+flat_anchor_dim: 25
+flat_anchor_hidden_dim: 128
+flat_anchor_embed_dim: 64
+flat_anchor_fusion_dim: 512
+flat_anchor_num_roles: 4
+# Per role: position(2), velocity(2), incoming/outgoing edge(4), confidence(1), fallback(1).
+flat_anchor_role_input_dim: 10
+# Preserve the complete official 512-D RGB state and append four 64-D roles.
+flat_anchor_scene_dim: 512
+flat_anchor_role_dim: 64
+flat_anchor_joint_dim: 768
+flat_anchor_token_dim: 256
+flat_anchor_num_heads: 4
+flat_anchor_num_layers: 2
+flat_anchor_loss_weight_floor: 0.1
+flat_anchor_loss_beta: 0.1
+# OC-style independent object reconstruction and action-conditioned prediction.
+flat_anchor_reconstruction_coef: 1.0
+flat_anchor_prediction_coef: 1.0
+
+# Live Cutie whole-arm/goal perception for `cutie_hybrid` and
+# `cutie_object_only`.
+# Cutie runs once per real observation in an isolated spawned process. The
+# learned compact object state, never Cutie itself, is rolled inside MPPI.
+cutie_object_repo: null
+cutie_object_checkpoint: null
+cutie_object_support_path: null
+# The original Visual-Small contract uses the manually labelled
+# ``whole_arm_goal_v1`` point pack.  Cross-task feasibility pilots use an
+# explicitly diagnostic indexed-mask support pack generated from MuJoCo's
+# support-only segmentation render; runtime observations remain RGB-only.
+cutie_object_support_schema: whole_arm_goal_v1
+cutie_object_role_names: [whole_arm, goal]
+cutie_object_allow_simulator_support: false
+# Explicit archival taxonomy; canonical defaults are not silently reinterpreted.
+cutie_object_task_role_contract: canonical_v1
+# Ablation: identical Cutie sensor, union-mask black background, ordinary RGB CNN.
+cutie_masked_rgb_enabled: false
+cutie_masked_rgb_schema: cutie_union_black_rgb_v1
+
+# Mask-Guided TD-MPC2 (disabled by default). The online Cutie masks guide a
+# bounded residual inside the ordinary spatial RGB encoder; RGB remains intact.
+cutie_mask_guided_rgb_enabled: false
+cutie_mask_guided_rgb_schema: cutie_mask_guided_spatial_residual_v1
+cutie_mask_guided_rgb_hidden_channels: 32
+cutie_mask_guided_rgb_random_shift_pad: 3
+cutie_mask_guided_rgb_role_pool: max
+cutie_mask_guided_rgb_correction_limit: 0.25
+# Scientific ablations for the mask-guided path. ``none`` is the method.
+# ``guidance_off`` preserves the complete sensor/model/parameter path but makes
+# its spatial correction identically zero. ``spatial_permute_v1`` preserves
+# every mask bit and status value while breaking its local RGB registration.
+cutie_mask_guided_rgb_ablation_mode: none
+# Diagnostic observation factorization. ``full`` is the established Cutie
+# query+mask path. ``cutie_mask_geometry`` keeps only Cutie's 74-D mask geometry
+# and status; ``gt_mask_geometry`` replaces it with a privileged same-frame
+# MuJoCo segmentation mask.  The latter two keep the 512-D query block exactly
+# zero and are never deployable paper methods.
+cutie_object_observation_variant: full
+cutie_object_frame_schema: cutie_query_mask_status_v1
+# A separate explicit privilege boundary: support-only simulator masks do not
+# authorize querying MuJoCo segmentation on every training/evaluation frame.
+cutie_object_allow_simulator_runtime: false
+# Separate privilege boundary for the RGB-free Acrobot articulated-pose oracle.
+# Enabling it is valid only with observation_variant=gt_articulated_pose and the
+# exact state/object-only diagnostic contract validated by the wrapper.
+cutie_object_allow_simulator_kinematics_runtime: false
+# Deployable Acrobot pose front-end. It predicts base/elbow/tip from a causal
+# RGB/action window, then emits the same 2x21 role tensor as the GT-pose Oracle.
+# The checkpoint is trained offline with simulator kinematics as labels; the
+# runtime wrapper is forbidden from reading simulator state. A Cutie union mask
+# is optional and may only come from a deployable runtime provider (never GT).
+visual_pose_checkpoint: null
+visual_pose_device: cuda:0
+visual_pose_history: 4
+visual_pose_image_size: 64
+visual_pose_control_dt: 0.04
+visual_pose_confidence_threshold: 0.0
+visual_pose_use_cutie_mask: false
+# Fair Acrobot input ablation. ``visual_only``, ``proprio_only``, and ``fusion``
+# all emit the same 2x25 tensor and use the same 128-D controller state. Missing
+# modalities are exact zeros. Proprioception is current absolute link angle and
+# velocity read from qpos/qvel; it is explicitly privileged in simulator runs.
+articulated_pose_modalities: fusion
+multimodal_proprio_velocity_scale: 10.0
+# Final low-latency extension of the established full Cutie object path. The
+# online keypoint detector is not used. All ablation modes retain identical
+# 2x1774 observations and a 128-D controller; inactive fields are exact zeros.
+cutie_proprio_mode: fusion  # cutie_only | proprio_only | fusion | factorized | factorized_proprio_only
+cutie_proprio_velocity_scale: 10.0
+cutie_object_config_dir: null
+cutie_object_device: cuda:0
+cutie_object_tracker_height: 448
+cutie_object_tracker_width: 448
+# Optional perception-only RGB sensor.  When enabled, the environment renders
+# one extra DMC RGB image from the exact current simulator state after the
+# ordinary 64x64 policy observation has been produced. Existing visual wrappers
+# are replayed without advancing their clocks; a configured video background is
+# the current cached 64x64 background frame resized onto the native DMC render.
+# Policy observations,
+# replay, Cutie's 448x448 tracker canvas, and the 590-D object descriptor remain
+# unchanged.  Disabled is the historical bitwise path.
+cutie_object_native_highres_enabled: false
+cutie_object_native_highres_size: 128  # allowed: 128, 256 (256 diagnostic-only)
+cutie_object_model_size: small
+cutie_object_prompt_radius: 2.0
+cutie_object_amp: true
+cutie_object_worker_timeout_seconds: 180
+cutie_object_num_roles: 2
+# Per frame and role: pooled query (512), generic mask geometry (74), status (4).
+cutie_object_frame_dim: 590
+cutie_object_stack_frames: 3
+cutie_object_input_dim: 1770
+# ROF-WM V0. This is an exact-K, single-task, pure-visual object-field route.
+# It consumes the same causal RGB/Cutie response as the legacy baselines but
+# retains four coordinate-anchored local fields and one ordered-query identity
+# token per real role. V0 deliberately forbids padding, graph Transformers,
+# recurrent belief, simulator runtime labels, and state supervision.
+robust_object_field_enabled: false
+robust_object_field_schema: robust_object_field_v0
+robust_object_field_local_tokens: 4
+robust_object_field_token_dim: 64
+robust_object_field_context_radius: 3
+robust_object_field_query_mode: ordered_compressed
+robust_object_field_random_shift_pad: 3
+robust_object_field_dynamics_hidden_dim: 512
+robust_object_field_decoder_hidden_dim: 256
+# Opt-in V1 diagnostic. When true, each role keeps its ordered three-frame
+# spatial trajectory and explicit centroid/area deltas. False preserves V0.
+robust_object_field_temporal_role_geometry: false
+# Pure-visual spatial object belief. Every 8x8 mask cell remains a token across
+# the three-frame causal stack. Acrobot consumes an identity-invariant union of
+# its two support masks; two learned structural slots attend to the same whole-
+# object evidence instead of receiving brittle per-link pixel assignments.
+cutie_object_spatial_token_enabled: false
+cutie_object_spatial_graph_path: null
+cutie_object_spatial_token_dim: 64
+cutie_object_spatial_num_heads: 4
+cutie_object_spatial_num_layers: 2
+# Universal variable-cardinality object graph. When enabled, the live
+# observation contains exactly K configured roles (no padding roles), while a
+# shared graph encoder pools any 1 <= K <= max_roles into the fixed 128-D
+# controller state. Parameter shapes are independent of K.
+cutie_object_variable_graph_enabled: false
+cutie_object_variable_graph_max_roles: 8
+cutie_object_variable_graph_pool_tokens: 2
+# Preserve the first declared control/target roles as an identity path while
+# graph attention learns residual information from every actual role.
+cutie_object_variable_graph_primary_skip_enabled: false
+# ``direct`` keeps exactly K configured role tokens (K*role_dim); ``pool`` is
+# the fixed-width compression ablation retained for comparison.
+cutie_object_variable_graph_readout: pool
+# Matched regression modes: null and legacy_mlp_v1 preserve the established
+# K=2/128-D path exactly. spatial_graph_v1 is the K=2 encoder intervention.
+# legacy_mlp_k3_v1 is the explicit non-spatial K=3 extension with three unchanged
+# 64-D role tokens and a derived 192-D controller state. Public spatial/variable
+# switches remain false in every regression mode.
+cutie_object_regression_encoder: null
+# Paired pure-visual study: the same decoder exists in both arms; only its
+# auxiliary loss coefficient differs. State labels are NEVER observations.
+cutie_object_true_entity_enabled: false
+object_state_supervision_enabled: false
+object_state_supervision_collect_labels: false
+object_state_supervision_coef: 0.1
+# Strict final Acrobot experiment. When enabled, the original 128-D visual
+# latent is destroyed after predicting the normalized physical state. Policy,
+# Q, reward and action-conditioned imagination receive only that prediction.
+object_state_bottleneck_enabled: false
+object_state_bottleneck_hidden_dim: 128
+# Auxiliary decoder target used by both current-observation reconstruction and
+# action-conditioned future prediction. ``full_descriptor`` is the established
+# objective. ``geometry_status_full_denominator`` keeps the complete Full-Cutie
+# 1770-D observation, encoder input, and decoder output, but masks the 512 query
+# values in each frame after elementwise SmoothL1 evaluation. Its mean still uses
+# all 1770 positions, so geometry/status gradient scale matches the full target.
+cutie_object_auxiliary_target: full_descriptor
+# ROF-WM-only multipliers on the established structured-anchor coefficients.
+# Values of 1.0 preserve all existing runs bit for bit.  Setting either value
+# to 0.0 disables that decoder loss path without changing observations, replay,
+# the controller latent, or non-ROF Cutie modes.  Use the geometry/status target
+# above to remove query-appearance supervision while keeping its full 1770-D
+# loss denominator.
+robust_object_field_auxiliary_reconstruction_coef: 1.0
+robust_object_field_auxiliary_prediction_coef: 1.0
+# Optional real same-state sibling auxiliary for ROF-WM.  The ordinary online
+# replay and controller observation are unchanged.  When enabled during
+# training, a separate model-input-only capsule supplies one shared root,
+# a genuinely executed action branch, and a different genuinely executed
+# sibling future.  ``ranking_coef=0`` is the matched positive-only control;
+# a positive value additionally requires the executed action to rank its own
+# future ahead of the sibling future.  Disabled defaults preserve all existing
+# training, RNG, optimizer, checkpoint, and evaluation paths.
+rof_real_sibling_aux_enabled: false
+rof_real_sibling_aux_manifest: null
+rof_real_sibling_aux_manifest_sha256: null
+rof_real_sibling_aux_capsule_format: null
+rof_real_sibling_aux_source_dataset_sha256: null
+rof_real_sibling_aux_condition: clean
+rof_real_sibling_aux_positive_coef: 1.0
+rof_real_sibling_aux_ranking_coef: 0.0
+rof_real_sibling_aux_margin_fraction: 0.1
+rof_real_sibling_aux_batch_size: 8
+rof_real_sibling_aux_horizon: 3
+rof_real_sibling_aux_update_frequency: 1
+rof_real_sibling_aux_seed_offset: 15485863
+# Optional training-only interventions for the official raw-RGB world model.
+# The capsule contains exact clean/hard physical twins plus genuinely executed
+# same-root action branches; Cutie, masks, object roles, and raw simulator state
+# are forbidden.  Evaluation remains RGB-only and never opens this capsule.
+# Enabled experiments use exactly one of: label-blind data-matched transition
+# strict matched-forward consistency (0,1,0,0), background (1,0,0,0),
+# fork (0,1,1,1), or joint
+# (1,1,1,1), in coefficient order below. The legacy four-arm screen itself
+# remains background/fork/joint plus disabled TD-MPC2.
+rgb_interventional_aux_enabled: false
+rgb_interventional_aux_manifest: null
+rgb_interventional_aux_manifest_sha256: null
+rgb_interventional_aux_capsule_format: null
+rgb_interventional_aux_source_dataset_sha256: null
+rgb_interventional_aux_background_coef: 0.0
+rgb_interventional_aux_positive_coef: 0.0
+rgb_interventional_aux_separation_coef: 0.0
+rgb_interventional_aux_ranking_coef: 0.0
+rgb_interventional_aux_outcome_gap_threshold: 0.05
+rgb_interventional_aux_margin_min: 0.05
+rgb_interventional_aux_margin_max: 0.2
+rgb_interventional_aux_batch_size: 8
+rgb_interventional_aux_horizon: 3
+rgb_interventional_aux_update_frequency: 1
+rgb_interventional_aux_seed_offset: 32452843
+# Negative-control correspondence schedule. ``correct`` preserves every legacy
+# arm. The shuffled values are accepted only with the full joint coefficients;
+# their independent RNG never changes replay sampling or ShiftAug draws.
+rgb_interventional_aux_pairing_mode: correct
+rgb_interventional_aux_pairing_seed_offset: 32452845
+cutie_object_role_dim: 64
+cutie_object_hidden_dim: 256
+cutie_object_joint_dim: 640
+# Diagnostic object-memory ablation. When enabled, an invalid role keeps the
+# first 586 content values from that role's most recent valid frame in the same
+# episode while exposing the current confidence/lost/valid/mask_score status.
+# Disabled by default so all established Cutie observations remain bitwise
+# unchanged.
+cutie_object_last_valid_memory: false
+# Evaluation-only fixed missing-object plan. Training protocols must keep null;
+# the wrapper validates and hashes the complete 20-episode schedule when enabled.
+cutie_object_policy_burst_plan: null
+# Complete controller/world-model latent for structural object-only mode.
+cutie_object_only_latent_dim: 128
+# Learned action-conditioned object belief. This is deliberately independent
+# of the diagnostic last-valid preprocessing above: observations and replay
+# remain raw Cutie outputs, while a second transition (initialized from the
+# planning dynamics) is trained on clean-teacher sequences with synthetic
+# contiguous missing-object bursts. Disabled by default so established
+# ObjectOnly checkpoints and training remain unchanged.
+cutie_object_belief_enabled: false
+# Train the belief transition without letting it change online data collection
+# by default. Final evaluators may explicitly enable belief control on a frozen
+# checkpoint; legacy v4 checkpoints retain their historical online behavior.
+cutie_object_belief_use_for_control: false
+cutie_object_belief_batch_size: 128
+cutie_object_belief_burn_in: 3
+cutie_object_belief_min_burst: 5
+cutie_object_belief_max_burst: 20
+cutie_object_belief_recovery_frames: 1
+cutie_object_belief_update_frequency: 4
+cutie_object_belief_lr: 0.0003
+cutie_object_belief_loss_coef: 1.0
+cutie_object_belief_reacquisition_coef: 1.0
+cutie_object_belief_mask_seed_offset: 104729
+cutie_object_belief_replay_seed_offset: 130363
+
+# Evaluation-only visual stress.  Pixels are eroded on the clean DMC render
+# before the dynamic background is composited, so physics/collisions are not
+# changed.  Training protocols keep this at zero.
+visual_foreground_erosion_pixels: 0
+
+# Fast object-only graph state: four role latents (base, elbow, tip, goal).
+# The resulting control state is 4 * 32 = 128 dimensions. Actions are applied
+# only to the fixed controllable roles (elbow and tip) in the implementation.
+flat_anchor_object_role_dim: 32
+flat_anchor_object_hidden_dim: 64
+
+# Lightweight HybridGraph: official RGB 512-D + four 32-D role states. The
+# decision corrections use equal-width scene/graph stems and start at exact zero.
+flat_anchor_hybrid_joint_dim: 640
+flat_anchor_hybrid_hidden_dim: 128
+# RewardGraph uses the same 512 + 4*32 = 640 persistent state, but its only
+# decision branch is graph(128)+action -> reward logits. It never exposes scene
+# features to the correction, so the official RGB reward path and gradients stay
+# untouched. Keeping this width separate prevents the retired HybridGraph head
+# size from silently controlling the new reward-only ablation.
+flat_anchor_reward_graph_hidden_dim: 64
+# Keep RGB and graph consistency separately normalized at equal coefficients;
+# never average them together over the 640-D concatenated state.
+flat_anchor_graph_consistency_coef: 20
+
+# Optional event-tracker ablation. It is deliberately disabled: the warmed
+# dense DINO teacher is only ~7.8 ms/frame on the target RTX 4090, whereas the
+# tested CPU ZNCC tracker costs ~25 ms/frame. ObjectGraph therefore uses the
+# accurate frozen DINO anchor on every decision frame.
+flat_anchor_event_enabled: false
+flat_anchor_event_max_interval: 12
+# A failed cheap proposal cannot call DINO again until four intervening
+# decisions have elapsed. This hard-caps repeated failure refreshes at 20%.
+flat_anchor_event_min_refresh_gap: 4
+flat_anchor_event_confidence_threshold: 0.30
+flat_anchor_event_structure_tolerance: 0.20
+flat_anchor_event_color_search_radius: 6
+flat_anchor_event_color_confidence_threshold: 0.20
+
+# evaluation
+checkpoint: ???
+eval_episodes: 10
+eval_freq: 50000
+save_eval_episode_trace: false # Save every individual evaluation return as JSONL.
+# Save a model snapshot after each non-zero periodic evaluation. Disabled by
+# default because long runs can otherwise create many large checkpoint files.
+save_eval_checkpoints: false
+
+# training
+steps: 10_000_000
+batch_size: 256
+reward_coef: 0.1
+value_coef: 0.1
+termination_coef: 1
+consistency_coef: 20
+rho: 0.5
+lr: 3e-4
+enc_lr_scale: 0.3
+grad_clip_norm: 20
+tau: 0.01
+discount_denom: 5
+discount_min: 0.95
+discount_max: 0.995
+buffer_size: 1_000_000
+exp_name: default
+data_dir: ???
+
+# planning
+mpc: true
+iterations: 6
+num_samples: 512
+num_elites: 64
+num_pi_trajs: 24
+horizon: 3
+min_std: 0.05
+max_std: 2
+temperature: 0.5
+
+# actor
+log_std_min: -10
+log_std_max: 2
+entropy_coef: 1e-4
+
+# critic
+num_bins: 101
+vmin: -10
+vmax: +10
+
+# architecture
+model_size: ???
+num_enc_layers: 2
+enc_dim: 256
+num_channels: 32
+mlp_dim: 512
+latent_dim: 512
+task_dim: 96
+num_q: 5
+dropout: 0.01
+simnorm_dim: 8
+
+# logging
+wandb_project: ???
+wandb_entity: ???
+wandb_silent: false
+enable_wandb: true
+save_csv: true
+
+# misc
+compile: true
+# Off by default to preserve upstream behavior. Matched HybridGraph experiments
+# explicitly enable this so different Inductor graphs draw the same eager CUDA
+# random stream instead of graph-dependent Philox substreams.
+compile_fallback_random: false
+save_video: true
+save_agent: true
+seed: 1
+
+# convenience
+work_dir: ???
+task_title: ???
+multitask: ???
+tasks: ???
+obs_shape: ???
+action_dim: ???
+episode_length: ???
+obs_shapes: ???
+action_dims: ???
+episode_lengths: ???
+seed_steps: ???
+bin_size: ???

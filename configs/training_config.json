@@ -1,0 +1,40 @@
+{
+  "shared_across_all_tasks": true,
+  "obs": "rgb",
+  "size": [64, 64],
+  "frame_stack": 3,
+  "latent_dim": 512,
+  "action_repeat": 2,
+  "episode_length": 500,
+  "steps": 300000,
+  "seeds": [6, 7, 8],
+  "model_size": 5,
+  "num_enc_layers": 2,
+  "enc_dim": 256,
+  "mlp_dim": 512,
+  "video_background_enabled": true,
+  "video_background_split": "train",
+  "interventional_aux": {
+    "enabled": true,
+    "branch_magnitude": 0.8,
+    "outcome_gap_threshold": 0.05,
+    "margin_min": 0.05,
+    "margin_max": 0.2,
+    "horizon": 3,
+    "batch_size": 8,
+    "update_frequency": 1,
+    "rho": 0.5,
+    "coefficients": {
+      "background": 1.0,
+      "positive": 1.0,
+      "separation": 1.0,
+      "ranking": 1.0
+    }
+  },
+  "eval": {
+    "episodes_per_condition": 20,
+    "cup_catch_episodes": 50,
+    "env_seed_base": 424243,
+    "background_seed_base": 1618034
+  }
+}

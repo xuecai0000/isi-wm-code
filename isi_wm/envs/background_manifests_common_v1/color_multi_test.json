@@ -1,0 +1,9 @@
+{
+  "schema_version": 2,
+  "name": "test",
+  "sources": [
+    "video90.mp4", "video91.mp4", "video92.mp4", "video93.mp4",
+    "video94.mp4", "video95.mp4", "video96.mp4", "video97.mp4",
+    "video98.mp4", "video99.mp4"
+  ]
+}
